@@ -30,9 +30,8 @@ def p_r(r: int) -> float:
     Prior sobre la ubicación del regalo.
     r ∈ {0, 1, 2}
     """
-    prob = [1/3, 1/3, 1/3]
-    if r in [0,1,2]:
-        return prob[r]
+    if r in H:
+        return 1/3
     else:
         return "Posición incorrecta, prueba con un numero entre 0 y 2"
 
@@ -43,12 +42,10 @@ def p_c(c: int) -> float:
     Prior sobre la caja elegida por el participante
     c ∈ {0, 1, 2}
     """
-    prob = [1/3, 1/3, 1/3]
-    if c in [0,1,2]:
-            return prob[c]
+    if c in H:
+            return 1/3
     else:
             return "Posición incorrecta, prueba con un numero entre 0 y 2"
-
 
 # ------------------------------------------------------------
 # 3. Modelos del presentador
@@ -77,7 +74,6 @@ def p_s_rM0(s: int, r: int) -> float:
                 return "Posición incorrecta, prueba con un numero entre 0 y 2"
     else:
         return "Posición incorrecta, prueba con un numero entre 0 y 2"
-
 
 def p_s_rcM1(s: int, r: int, c: int):
     """
@@ -122,12 +118,11 @@ def p_rcs_M(r: int, c: int, s: int, m: int) -> float:
     """
     if m in [0,1]:
          if m==0:
-              return p_r(r)*p_c(c)*p_s_rM0(s)
+              return p_r(r)*p_c(c)*p_s_rM0(s, r)
          elif m==1:
-                       return p_r(r)*p_c(c)*p_s_rcM1(s)
+                       return p_r(r)*p_c(c)*p_s_rcM1(s, r, c)
     else:
          return "Posición incorrecta, prueba con un numero entre 0 y 1"
-
 
 # ------------------------------------------------------------
 # 5. Simulación de datos (asumiendo Monty Hall verdadero)
@@ -142,29 +137,28 @@ def simular(T=16) -> List[Tuple[int, int, int]]:
     T: número de datos a generar.
     """
     p_r_probs = [p_r(r) for r in H]
-    p_c_probs = [p_r(c) for c in H]
+    p_c_probs = [p_c(c) for c in H]
 
     lista=[]
 
     for _ in range(T):
-         ct = np.random.choice(H,p_c_probs)
-         rt = np.random.choice(H,p_r_probs)
+         ct = np.random.choice(a=H,p=p_c_probs)
+         rt = np.random.choice(a=H,p=p_r_probs)
 
          p_s_probs = [p_s_rcM1(s, rt, ct) for s in H]
-         st = np.random.choice(H,p_s_probs)
+         st = np.random.choice(a=H,p=p_s_probs)
          tup=(ct ,st ,rt)
          lista.append(tup)
 
     return lista
-
-
+datos=simular(T=16)
 
 # ------------------------------------------------------------
 # 6. Probabilidad de los datos dado un modelo
 # ------------------------------------------------------------
 
 
-
+'''
 def p_r_sM0(s,r):
     if s == r:
         return 0
@@ -177,10 +171,8 @@ def p_r_scM1(s,c,r):
     if s == r or s == c:
         return 0
     if r == c:
-        # El participante eligió la del regalo. Hay 2 opciones restantes válidas (1/2 cada una).
         return 0.5
     else:
-        # El participante eligió una caja vacía. Hay solo 1 opción restante válida (probabilidad 1.0).
         return 1
 
 def pEpisodio_M(c,s,r,m):
@@ -190,9 +182,9 @@ def pEpisodio_M(c,s,r,m):
      pEpisodio M(c,s,r,m)
      '''
      if m==0:
-        return p_c(c)*p_s_rM0(s)*p_r_sM0(s,r)  #P (ct |M ) P (st |ct, M ) P (rt |st, ct, M )
+        return p_c(c)*p_s_rM0(s,r)*p_r_sM0(s,r)  #P (ct |M ) P (st |ct, M ) P (rt |st, ct, M )
      elif m==1:
-        return p_c(c)*p_s_rM0(s)*p_r_scM1(s,c,r)  #P (ct |M ) P (st |ct, M ) P (rt |st, ct, M )
+        return p_c(c)*p_s_rcM1(s,r,c)*p_r_scM1(s,c,r)  #P (ct |M ) P (st |ct, M ) P (rt |st, ct, M )
      else:
           return "Error"
 
@@ -209,6 +201,24 @@ def pDatos_M(datos: List[Tuple[int, int, int]], m: int) -> float:
         lista.append(aux)
     return math.prod(lista)
 
+'''
+#---------------------------------------------------------------------------------
+#Esto tambien podia calcularse directamente con la conjunta del primer ejercicio:
+#---------------------------------------------------------------------------------
+
+def pDatos_M(datos: List[Tuple[int, int, int]], m: int) -> float:
+    """
+    P(Datos | M) = prod([ P(c,s,r|M) for c, s, r in Datos ])
+    Probabilidad de ver los datos dados el modelo considerado.
+    m ∈ {0, 1}
+    """
+    lista=[]
+    for c,s,r in datos:
+        aux=p_rcs_M(r,c,s,m)
+        lista.append(aux)
+    return math.prod(lista)
+
+pDatos_M(datos, m=1)
 
 # ------------------------------------------------------------
 # 7. Probabilidad total de ver los datos
@@ -221,7 +231,10 @@ def pM(m: int) -> float:
     Prior sobre los modelos.
     m ∈ {0, 1}
     """
-    pass
+    if m in [0,1]:
+        return 1/2
+    else:
+        return "Ingrese un numero valido entre 0 y 1"
 
 
 def pDatos(datos: List[Tuple[int, int, int]]) -> float:
@@ -230,7 +243,8 @@ def pDatos(datos: List[Tuple[int, int, int]]) -> float:
     Probabilidad total de ver los datos usando la contribución
     de todos los modelos.
     """
-    pass
+    return pDatos_M(datos,m=1)*pM(1)+pDatos_M(datos,m=0)*pM(0)
+
 
 
 # ------------------------------------------------------------
@@ -240,20 +254,26 @@ def pDatos(datos: List[Tuple[int, int, int]]) -> float:
 
 def pM_Datos(m: int, datos: List[Tuple[int, int, int]]) -> float:
     """
-    P(M | Datos)
+    P(M | Datos) = P(Modelo,Datos)/P(Datos)
     Actualización de la creencia sobre el modelo M dado los datos
     (distribución a posteriori).
     """
-    pass
-
+    return pDatos_M(datos,m)*pM(m)/pDatos(datos)
 
 def evolucion_posterior(m: int, datos: List[Tuple[int, int, int]]) -> List[float]:
     """
     Evolución del posterior de los modelos según se observa información.
     """
-    pass
+    posterior = []
+    for t in range(len(datos)):
+        posterior.append(pM_Datos(m, datos[0:t]))
+    return posterior
 
 
+plt.plot(evolucion_posterior(m=1, datos=datos), label="M1: Monty Hall")
+plt.plot(evolucion_posterior(m=0, datos=datos), label="M0: Base")
+plt.legend()
+plt.show()
 
 # ------------------------------------------------------------
 # 9. Cálculo del bayes factor
@@ -266,8 +286,8 @@ def log_pDatos_M(datos: List[Tuple[int, int, int]], m: int) -> float:
     log(P(Datos | M))
     Logaritmo de la probabilidad de ver los datos dados el modelo considerado.
     """
-    pass
-
+    return np.log10(pDatos_M(datos,m))
+log_pDatos_M(datos=datos, m=1)
 
 def log_bayes_factor(datos: List[Tuple[int, int, int]], m_i: int, m_j: int) -> float:
     """
@@ -275,21 +295,23 @@ def log_bayes_factor(datos: List[Tuple[int, int, int]], m_i: int, m_j: int) -> f
     Bayes factor en escala logarítmica para comparar dos modelos.
     m_i, m_j ∈ {0, 1}
     """
-    pass
+    return log_pDatos_M(datos, m=m_i)-log_pDatos_M(datos, m=m_j)
 
-
+log_bayes_factor(datos=datos, m_i=0, m_j=1)
 # ------------------------------------------------------------
 # 10. Predicción típica que realizan los modelos sobre los datos
 # ------------------------------------------------------------
 
-def prediccion_tipica(datos: List[Tuple[int, int, int]], m: int) -> float:
+def log_prediccion_tipica(datos: List[Tuple[int, int, int]], m: int) -> float:
     """
     log(Media Geométrica)
     Logaritmo de la media geométrica de los datos dados el modelo considerado.
     m ∈ {0, 1}
     """
-    pass
-
+    entropia_cruzada= - log_pDatos_M(datos, m)/(len(datos)*3)
+    log_loss=entropia_cruzada
+    return log_loss
+log_prediccion_tipica(datos=datos, m=1)
 
 
 # ------------------------------------------------------------
