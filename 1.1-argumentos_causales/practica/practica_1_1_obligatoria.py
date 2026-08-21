@@ -8,6 +8,7 @@ from typing import List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+import math
 
 warnings.filterwarnings("ignore")
 
@@ -176,11 +177,11 @@ def p_r_scM1(s,c,r):
         return 1
 
 def pEpisodio_M(c,s,r,m):
-     '''
-     Implementar la predicci ́on que el modelo hace de un episodio 
-     P (ct, st, rt | M ) =P (ct |M ) P (st |ct, M ) P (rt |st, ct, M )
-     pEpisodio M(c,s,r,m)
-     '''
+     
+     #Implementar la predicci ́on que el modelo hace de un episodio 
+    #P (ct, st, rt | M ) =P (ct |M ) P (st |ct, M ) P (rt |st, ct, M )
+    # pEpisodio M(c,s,r,m)
+     
      if m==0:
         return p_c(c)*p_s_rM0(s,r)*p_r_sM0(s,r)  #P (ct |M ) P (st |ct, M ) P (rt |st, ct, M )
      elif m==1:
@@ -324,8 +325,8 @@ if __name__ == "__main__":
 
     # Print de funciones
     print("log_bayes_factor (M1 contra M0):", log_bayes_factor(datos, 1, 0))
-    print("prediccion_tipica (M0):", prediccion_tipica(datos, 0))
-    print("prediccion_tipica (M1):", prediccion_tipica(datos, 1))
+    print("prediccion_tipica (M0):", log_prediccion_tipica(datos, 0))
+    print("prediccion_tipica (M1):", log_prediccion_tipica(datos, 1))
 
     # Posteriores
     post_M0 = evolucion_posterior(0, datos)
