@@ -133,7 +133,10 @@ def p_p(p: float) -> float:
     Prior sobre la memoria del presentador.
     p ∈ [0, 1]
     """
-    pass
+    if p in P_GRID:
+        return 1 / len(P_GRID)
+    else:
+        "Error en P(p). Ingrese un numero valido"
 
 
 def p_a_p(a: int, p: float) -> float:
@@ -144,8 +147,10 @@ def p_a_p(a: int, p: float) -> float:
     a ∈ {0, 1}
     p ∈ [0, 1]
     """
-    pass
-
+    if a==1:
+        return p
+    elif a==0:
+        return 1-p
 
 # ------------------------------------------------------------
 # 4. Verosimilitud de un episodio dada la memoria p
@@ -161,7 +166,8 @@ def p_csr_p(r: int, c: int, s: int, p: float) -> float:
     c ∈ {0, 1, 2}
     p ∈ [0, 1]
     """
-    pass
+    if s in H and r in H and c in H and p in [0,1]: 
+        return p*p_rcs_M(r,c,s,m=1)+p_a_p(p)*(1-p)(r,c,s,m=0)
 
 
 # ------------------------------------------------------------
@@ -176,7 +182,20 @@ def p_p_datos(p: float, datos: List[Tuple[int, int, int]]) -> float:
     Datos: Lista de tuplas (c, s, r)
     p ∈ [0, 1]
     """
-    pass
+    acum=1
+    for r,c,s in datos:
+        acum = p_csr_p(r,c,s,p)*acum
+    p_pdatos= (p_a_p(p)*acum)
+
+    den=0
+    for _ in P_GRID:
+        acum2=1
+        for r,c,s in datos:
+            acum2 =p_csr_p(r,c,s,_)*acum2
+        den = acum2*_ + den
+
+    return p_pdatos/den
+
 
 
 # ------------------------------------------------------------
@@ -202,6 +221,29 @@ def estimar_p(posterior_p: Callable, observaciones: int = 60) -> pd.DataFrame:
 
     return estimaciones_p
 
+#calculamos la posterior dados los datos T-1
+estimar_p(p_p_datos)
+
+def promediar_p(csv, p_grid, cant):
+
+    datos = pd.read_csv(csv)
+    datos = list(datos.itertuples(index=False, name=None))
+
+    T = cant
+    episodio_actual = datos[T]        
+    datos_previos = datos[:T]          
+
+    prediccion_episodio = 0
+    for p in P_GRID:
+        c, s, r = episodio_actual
+        verosimilitud_p = p_csr_p(c, s, r, p)          
+        peso_posterior = p_p_datos(p, datos_previos)    
+    
+        prediccion_episodio += verosimilitud_p * peso_posterior
+
+    return prediccion_episodio
+
+
 
 # ------------------------------------------------------------
 # 7. Predicción de un episodio considerando datos anteriores
@@ -220,7 +262,23 @@ def p_episodio_datos_MA(
     c ∈ {0, 1, 2}
     Datos: Lista de tuplas (c, s, r)
     """
-    pass
+    #P(episodio0|MA). P_GRID Es nuestro prior de p
+    datos_previos=[]
+    for ct,st,rt in datos:
+        prediccion_episodio = 0
+       
+        if prediccion_episodio==0:
+            for pt in P_GRID:
+                verosimilitud_p = p_csr_p(ct, st, rt, pt)
+                peso_posterior = p_p(pt)
+                prediccion_episodio += verosimilitud_p * peso_posterior
+            
+        else:
+            verosimilitud_p = p_csr_p(ct, st, rt, peso_posterior)          
+            peso_posterior = p_p_datos(peso_posterior, datos_previos)    
+            
+            prediccion_episodio += verosimilitud_p * peso_posterior
+        datos_previos.append((ct,st,rt))
 
 
 # ------------------------------------------------------------
