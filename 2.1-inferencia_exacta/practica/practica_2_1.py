@@ -5,12 +5,12 @@ Práctica 2.1: Métodos de inferencia exacta.
 
 import warnings
 from typing import List, Tuple
-
-import ModeloLineal as ml
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
 from statsmodels.api import OLS
+import ModeloLineal as ml
 
 warnings.filterwarnings("ignore")
 
@@ -47,10 +47,13 @@ def realidad_causal_subyacente(X: np.ndarray, beta: float = BETA) -> np.ndarray:
     Returns:
         Array con valores de salida ruidosos, mismo shape que X
     """
-    pass
+    ruido= np.random.normal(0, np.sqrt(1/beta), X.shape)
+    seno= np.sin(2*np.pi*X)
+
+    return seno + ruido
 
 
-def generar_datos() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def generar_datos(lower=-0.5, upper=0.5, N=N) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Genera datos de entrenamiento y grilla de evaluación.
 
@@ -60,8 +63,21 @@ def generar_datos() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         X_grilla: Puntos para graficar la función suave, shape (100, 1)
         Y_grilla: Función verdadera en grilla sin ruido, shape (100, 1)
     """
-    pass
+    X=np.random.uniform(lower,upper,(N,1))
+    Y=realidad_causal_subyacente(X, BETA)
+    X_grilla= np.linspace(lower,upper,101)
+    Y_grilla=np.sin(2*np.pi*X_grilla)
 
+    return (X,Y,X_grilla,Y_grilla)
+
+
+'''
+X,Y,X_grilla,Y_grilla=generar_datos()
+
+plt.scatter(X,Y)
+plt.plot(X_grilla, Y_grilla)
+plt.show()
+'''
 
 # =============================================================================
 # SECCIÓN 2: MÁXIMA VEROSIMILITUD (OLS)
@@ -86,7 +102,11 @@ def phi(X: np.ndarray, grado: int) -> pd.DataFrame:
         DataFrame con (grado+1) columnas: [X^0, X^1, ..., X^grado]
         Tiene shape (N, grado+1)
     """
-    pass
+  
+    columnas={}
+    for d in range(grado+1):
+        columnas[f"X{d}"]=X[:,0]**d
+    return pd.DataFrame(columnas)
 
 
 def ajustar_modelos_OLS(X: np.ndarray, Y: np.ndarray) -> List:
@@ -102,7 +122,13 @@ def ajustar_modelos_OLS(X: np.ndarray, Y: np.ndarray) -> List:
     Returns:
         Lista de D modelos OLS ajustados (uno por cada grado)
     """
-    pass
+    modelos = []
+    for d in range(D): 
+        md=phi(X,d)
+        modelo=OLS(Y,md).fit()
+        modelos.append(modelo)
+
+    return modelos
 
 
 def extraer_verosimilitudes_OLS(modelos: List) -> np.ndarray:
@@ -119,8 +145,16 @@ def extraer_verosimilitudes_OLS(modelos: List) -> np.ndarray:
         Array de log-verosimilitudes, shape (D,)
         El atributo .llf es "log likelihood function"
     """
-    pass
+    res=[]
+    for m in modelos:
+        res.append(m.llf)
+    return np.array(res)
 
+'''
+ml=np.exp(extraer_verosimilitudes_OLS(ajustar_modelos_OLS(X, Y)))
+grados = range(0,D)
+plt.bar(grados,ml)
+'''
 
 # =============================================================================
 # SECCIÓN 3: PREDICCIÓN ONLINE
@@ -145,13 +179,26 @@ def prediccion_puntual(y: float, x: float, h: np.ndarray) -> float:
     Returns:
         Densidad de probabilidad en y (escalar positivo)
     """
-    pass
+    
+    mu= sum([x**d * h[d] for d in range(len(h))])
+    y_pred=norm.pdf(y,mu,np.sqrt(1/BETA))
+    return y_pred
 
+def log_prediccion_puntual(y: float, x: float, h: np.ndarray) -> float:
+    """
+    Calcula log P(y | x, h, beta) con una gaussiana N(mu, 1/beta),
+    donde mu = sum(h_i * x^i).
+
+    Trabaja directamente en escala log para evitar el underflow
+    (norm.pdf puede dar 0 y np.log(0) = -inf).
+    """
+    mu = sum(h[d] * x**d for d in range(len(h)))
+    return norm.logpdf(y, loc=mu, scale=np.sqrt(1/BETA))
 
 def evaluacion_online_OLS(X: np.ndarray, Y: np.ndarray) -> np.ndarray:
     """
     Evalúa modelos secuencialmente (online): predice cada dato
-    con modelo entrenado hasta ese momento, luego readjusta.
+    con modelo entrenado hasta ese momento, luego reajusta.
 
     Este es un procedimiento de validación cruzada secuencial.
     Mide capacidad predictiva real, no overfitting en entrenamiento.
@@ -164,9 +211,51 @@ def evaluacion_online_OLS(X: np.ndarray, Y: np.ndarray) -> np.ndarray:
         Array de log-evidencias acumuladas, shape (D,)
         Modelos con mejor predicción online tienen valores más altos
     """
-    pass
+    log_evidencia_acumulada=np.zeros(D)
 
+    modelos=[]
 
+    for grado in range(D):
+        modelo=OLS(Y[:1], phi(X[:1], grado)).fit()
+        modelos.append(modelo)
+        for i in range(1,N):
+            pred_y=prediccion_puntual(Y[i], X[i], modelo.params)
+            log_evidencia_acumulada[grado] += np.log(pred_y)
+            modelo=OLS(Y[:i+1], phi(X[:i+1], grado)).fit()
+    return log_evidencia_acumulada
+
+def evaluacion_online_OLS1(X: np.ndarray, Y: np.ndarray) -> np.ndarray:
+    """
+    Evalúa modelos secuencialmente (online): predice cada dato
+    con modelo entrenado hasta ese momento, luego reajusta.
+
+    Este es un procedimiento de validación cruzada secuencial.
+    Mide capacidad predictiva real, no overfitting en entrenamiento.
+
+    Args:
+        X: Datos de entrada, shape (N, 1)
+        Y: Datos de salida, shape (N, 1)
+
+    Returns:
+        Array de log-evidencias acumuladas, shape (D,)
+        Modelos con mejor predicción online tienen valores más altos
+    """
+    log_evidencia_acumulada=np.zeros(D)
+
+    modelos=[]
+
+    for grado in range(D):
+        modelo=OLS(Y[:1], phi(X[:1], grado)).fit()
+        modelos.append(modelo)
+        
+        for i in range(1, N):
+            log_pred = log_prediccion_puntual(Y[i, 0], X[i, 0], modelo.params)
+            log_evidencia_acumulada[grado] += log_pred   # ya no hace falta np.log
+            modelo = OLS(Y[:i+1], phi(X[:i+1], grado)).fit()
+            
+    return log_evidencia_acumulada
+
+#evaluacion_online_OLS1(X,Y)
 # =============================================================================
 # SECCIÓN 4: EVIDENCIA BAYESIANA Y SELECCIÓN DE MODELOS
 # =============================================================================
@@ -193,7 +282,14 @@ def calcular_log_evidencias(X: np.ndarray, Y: np.ndarray) -> np.ndarray:
         Array de log-evidencias, shape (D,)
         Valores más altos indican mejor balance complejidad-ajuste
     """
-    pass
+    log_evidencias=np.zeros(D)
+    
+    for grado in range(D):
+        log_ev=ml.log_evidence(Y, phi(X, grado))
+        log_evidencias[grado] = log_ev.iloc[0, 0]
+    return log_evidencias
+
+calcular_log_evidencias(X, Y)
 
 
 def calcular_posterior_modelos(X: np.ndarray, Y: np.ndarray) -> np.ndarray:
@@ -215,7 +311,26 @@ def calcular_posterior_modelos(X: np.ndarray, Y: np.ndarray) -> np.ndarray:
         Array de probabilidades posteriores, shape (D,)
         Suma a 1. Indica credibilidad de cada modelo.
     """
-    pass
+    prior=1/D
+    scores = calcular_log_evidencias(X, Y)
+    #scores= scores - scores.max()
+    scores= np.exp(scores)
+    posterior=  scores* prior
+    posterior = posterior/ posterior.sum()
+    
+    return posterior
+    
+posterior = calcular_posterior_modelos(X, Y)
+
+plt.bar(range(len(posterior)), posterior)
+plt.xticks(range(len(posterior)))
+plt.xlabel("Grado del polinomio")
+plt.ylabel("P(modelo | datos)")
+plt.show()
+
+
+
+ml.posterior(Y, phi(X, grado))
 
 
 # =============================================================================
@@ -787,3 +902,5 @@ if __name__ == "__main__":
     print("\n" + "=" * 70)
     print("Práctica completada exitosamente")
     print("=" * 70)
+
+
